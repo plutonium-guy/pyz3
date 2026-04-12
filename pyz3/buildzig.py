@@ -48,7 +48,7 @@ else:
 
 def _file_hash(path: Path) -> str:
     """Compute MD5 hash of file contents for change detection.
-    
+
     Uses streaming to avoid loading entire file into memory.
     """
     if not path.exists():
