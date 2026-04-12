@@ -61,9 +61,7 @@ def _to_package_name(name: str) -> str:
 # ── Template strings ──────────────────────────────────────────────────────
 
 
-def _pyproject_toml(
-    name: str, package_name: str, description: str, author_name: str, author_email: str
-) -> str:
+def _pyproject_toml(name: str, package_name: str, description: str, author_name: str, author_email: str) -> str:
     return f"""[project]
 name = "{name}"
 version = "0.1.0"
