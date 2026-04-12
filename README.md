@@ -1,16 +1,13 @@
 # pyz3 - Python Extensions in Zig
 
 <p align="center">
-    <em>A high-performance framework for writing Python extension modules in Zig with automatic memory management, hot-reload, and NumPy integration.</em>
+    <em>Write Python extensions in Zig. Fast builds, automatic type conversion, zero hassle.</em>
 </p>
 <p align="center">
-    <em>🌟 Inspired by <a href="https://github.com/fulcrum-so/ziggy-pydust">ziggy-pydust</a></em>
+    <em>Like <a href="https://pyo3.rs">PyO3</a> for Rust, but for Zig.</em>
 </p>
 
 <p align="center">
-<a href="https://github.com/amiyamandal-dev/pyz3/actions" target="_blank">
-    <img src="https://img.shields.io/github/actions/workflow/status/yourusername/pyz3/ci.yml?branch=main&logo=github" alt="Actions">
-</a>
 <a href="https://pypi.org/project/pyz3" target="_blank">
     <img src="https://img.shields.io/pypi/v/pyz3" alt="Package version">
 </a>
@@ -18,48 +15,56 @@
     <img src="https://img.shields.io/pypi/pyversions/pyz3" alt="Python version">
 </a>
 <a href="https://github.com/amiyamandal-dev/pyz3/blob/main/LICENSE" target="_blank">
-    <img src="https://img.shields.io/github/license/yourusername/pyz3" alt="License">
+    <img src="https://img.shields.io/github/license/amiyamandal-dev/pyz3" alt="License">
 </a>
 </p>
 
 ---
 
-**Documentation**: <a href="https://github.com/amiyamandal-dev/pyz3" target="_blank">https://github.com/amiyamandal-dev/pyz3</a>
+## Get Started in 60 Seconds
 
-**Source Code**: <a href="https://github.com/amiyamandal-dev/pyz3" target="_blank">https://github.com/amiyamandal-dev/pyz3</a>
+```bash
+pip install pyz3
+pyz3 new myproject
+cd myproject
+pip install -e ".[dev]"
+pyz3 develop
+pytest
+```
 
----
+That's it. You now have a working Python extension written in Zig.
 
-## Overview
+Try it:
 
-pyz3 is a complete framework for building high-performance Python extension modules in Zig. It provides:
+```python
+>>> from myproject import _lib
+>>> _lib.add(2, 3)
+5
+>>> _lib.hello("pyz3")
+'Hello, pyz3!'
+```
 
-- 🚀 **Seamless Python-Zig Interop** - Automatic argument marshalling and type conversion
-- 📊 **NumPy Integration** - Call NumPy functions from Zig via Python object interface
-- 🔧 **Complete CLI Toolkit** - Maturin-style commands for project lifecycle management
-- 📦 **Cross-Platform Builds** - Build wheels for Linux, macOS, and Windows
-- 🔗 **C/C++ Integration** - Automatic binding generation for C/C++ libraries
-- 🧪 **Testing Integration** - Pytest plugin to discover and run Zig tests
-- ⚡ **Hot Reload** - Watch mode with automatic rebuilding
-- 🛡️ **Memory Safe** - Leverages Zig's safety features with Python's GC
+## What You Get
 
-## Quick Example
+```
+myproject/
+  src/myproject.zig      # Your Zig code (auto-converts to Python module)
+  myproject/__init__.py   # Python package
+  test/test_myproject.py  # Tests that work with pytest
+  pyproject.toml          # Standard Python packaging (hatchling)
+  build.zig.zon           # Zig package manifest
+```
+
+## Write Zig, Call from Python
+
+### Functions
 
 ```zig
 const py = @import("pyz3");
 
-pub fn fibonacci(args: struct { n: u64 }) u64 {
-    if (args.n < 2) return args.n;
-
-    var sum: u64 = 0;
-    var last: u64 = 0;
-    var curr: u64 = 1;
-    for (1..args.n) |_| {
-        sum = last + curr;
-        last = curr;
-        curr = sum;
-    }
-    return sum;
+/// Exposed as a Python function with automatic type conversion.
+pub fn add(args: struct { a: i64, b: i64 }) i64 {
+    return args.a + args.b;
 }
 
 comptime {
@@ -68,168 +73,42 @@ comptime {
 ```
 
 ```python
-import mymodule
-print(mymodule.fibonacci(10))  # Output: 55
+>>> import mymodule
+>>> mymodule.add(a=2, b=3)  # keyword args work too
+5
 ```
 
-## NumPy Integration Example
-
-NumPy can be used from Zig code via the Python object interface:
+### Classes
 
 ```zig
-const py = @import("pyz3");
-
-const root = @This();
-
-/// Create and manipulate NumPy arrays from Zig
-pub fn array_stats() !py.PyObject {
-    const np = try py.numpy.getModule(@This());
-    defer np.decref();
-
-    // Create arange(1, 11)
-    const arange_method = try np.getAttribute("arange");
-    defer arange_method.decref();
-    const arr = try py.call(root, py.PyObject, arange_method, .{ 1, 11 }, .{});
-    defer arr.decref();
-
-    // Get mean
-    const mean_method = try arr.getAttribute("mean");
-    defer mean_method.decref();
-    return try py.call(root, py.PyObject, mean_method, .{}, .{});
-}
-
-comptime {
-    py.rootmodule(root);
-}
-```
-
-```python
-import mymodule
-
-result = mymodule.array_stats()
-print(result)  # Output: 5.5
-```
-
-> **Note:** Direct zero-copy array access via `PyArray` is not yet implemented. Arrays are currently accessed through Python method calls.
-
-## Compatibility
-
-- **Zig**: 0.15.x (tested with 0.15.1)
-- **Python**: 3.11, 3.12, 3.13 (CPython)
-- **Platforms**: Linux (x86_64, aarch64), macOS (x86_64, arm64), Windows (x64)
-- **pyz3 Version**: 0.9.3
-
-## Installation
-
-```bash
-pip install pyz3
-```
-
-Or with distribution extras for building wheels:
-
-```bash
-pip install pyz3[dist]
-```
-
-## Quick Start
-
-### 1. Create a New Project
-
-```bash
-# Create project using cookiecutter template
-pyz3 init -n myproject --description "My awesome extension" --email "you@example.com" --no-interactive
-
-cd myproject
-```
-
-### 2. Build Your Extension
-
-```bash
-# Development build
-zig build
-
-# Release build
-zig build -Doptimize=ReleaseFast
-
-# Watch mode (hot reload)
-pyz3 watch
-```
-
-### 3. Test Your Extension
-
-```bash
-# Run pytest
-pytest
-
-# Run specific test
-pytest test/test_myproject.py -v
-```
-
-### 4. Package for Distribution
-
-```bash
-# Build wheel for current platform
-python -m build --wheel
-
-# Build for all platforms (uses cross-compilation)
-pyz3 build-wheel --all-platforms
-
-# Publish to PyPI
-pyz3 deploy --repository testpypi  # Test first!
-pyz3 deploy --repository pypi       # Production
-```
-
-## CLI Commands
-
-pyz3 provides a complete CLI for managing your extension projects:
-
-```bash
-pyz3 init [OPTIONS]           # Initialize new project
-pyz3 build [OPTIONS]          # Build extension module
-pyz3 watch                    # Watch mode with hot reload
-pyz3 test [OPTIONS]           # Run tests
-pyz3 clean                    # Clean build artifacts
-pyz3 build-wheel [OPTIONS]        # Build distribution packages
-pyz3 deploy [OPTIONS]        # Publish to PyPI
-```
-
-## Key Features
-
-### Type-Safe Python-Zig Bridge
-
-Automatic conversion between Python and Zig types:
-
-| Zig Type | Python Type |
-|----------|-------------|
-| `void` | `None` |
-| `bool` | `bool` |
-| `i32`, `i64` | `int` |
-| `f32`, `f64` | `float` |
-| `[]const u8` | `str` |
-| `struct {...}` | `dict` |
-| `py.PyObject` | `numpy.ndarray` (via `py.numpy.getModule`) |
-
-### Classes and Methods
-
-```zig
-pub const Point = py.class(struct {
-    pub const __doc__ = "A 2D point";
+pub const Counter = py.class(struct {
+    pub const __doc__ = "A simple counter.";
     const Self = @This();
 
-    x: f64,
-    y: f64,
+    value: i64,
 
-    pub fn __init__(self: *Self, args: struct { x: f64, y: f64 }) !void {
-        self.* = .{ .x = args.x, .y = args.y };
+    pub fn __init__(self: *Self, args: struct { start: i64 = 0 }) void {
+        self.value = args.start;
     }
 
-    pub fn distance(self: *const Self) f64 {
-        return @sqrt(self.x * self.x + self.y * self.y);
+    pub fn increment(self: *Self) void {
+        self.value += 1;
+    }
+
+    pub fn get(self: *const Self) i64 {
+        return self.value;
     }
 });
 ```
 
-### Exception Handling
+```python
+>>> c = mymodule.Counter(start=10)
+>>> c.increment()
+>>> c.get()
+11
+```
+
+### Error Handling
 
 ```zig
 pub fn divide(args: struct { a: i64, b: i64 }) !i64 {
@@ -240,58 +119,100 @@ pub fn divide(args: struct { a: i64, b: i64 }) !i64 {
 }
 ```
 
-## Cross-Platform Distribution
+### NumPy Integration
 
-Build wheels for multiple platforms:
+```zig
+pub fn array_stats() !py.PyObject {
+    const np = try py.numpy.getModule(@This());
+    defer np.decref();
 
-```bash
-# Using environment variables
-ZIG_TARGET=x86_64-linux-gnu PYZ3_OPTIMIZE=ReleaseFast python -m build --wheel
-ZIG_TARGET=aarch64-linux-gnu PYZ3_OPTIMIZE=ReleaseFast python -m build --wheel
-ZIG_TARGET=x86_64-macos PYZ3_OPTIMIZE=ReleaseFast python -m build --wheel
-ZIG_TARGET=aarch64-macos PYZ3_OPTIMIZE=ReleaseFast python -m build --wheel
-ZIG_TARGET=x86_64-windows-gnu PYZ3_OPTIMIZE=ReleaseFast python -m build --wheel
+    const arange_method = try np.getAttribute("arange");
+    defer arange_method.decref();
+    const arr = try py.call(root, py.PyObject, arange_method, .{ 1, 11 }, .{});
+    defer arr.decref();
+
+    const mean_method = try arr.getAttribute("mean");
+    defer mean_method.decref();
+    return try py.call(root, py.PyObject, mean_method, .{}, .{});
+}
 ```
 
-The build system automatically:
-- Detects target platform
-- Cross-compiles for different architectures
-- Creates manylinux-compatible wheels
-- Handles platform-specific optimizations
+## Type Conversion
 
-## Performance
+Automatic conversion between Python and Zig types:
 
-pyz3 leverages Zig's performance advantages:
+| Zig Type | Python Type |
+|----------|-------------|
+| `bool` | `bool` |
+| `i32`, `i64`, `u64` | `int` |
+| `f32`, `f64` | `float` |
+| `[]const u8` | `str` |
+| `struct {...}` | keyword args / `dict` |
+| `py.PyObject` | any Python object |
+| `!T` | raises Python exception on error |
 
-- **Zero-cost abstractions** - No runtime overhead
-- **Compile-time optimizations** - Zig's comptime for metaprogramming
-- **SIMD support** - Automatic vectorization where possible
-- **Small binaries** - Smaller than equivalent Rust extensions
-- **Fast compilation** - Faster than Rust, comparable to C
+## CLI Commands
+
+```bash
+pyz3 new <name>         # Create new project
+pyz3 develop            # Build + install in dev mode
+pyz3 run -c "expr"      # Build + run a Python expression
+pyz3 run script.py      # Build + run a script
+pyz3 watch              # Hot-reload on file changes
+pyz3 build-wheel        # Build distribution wheel
+pyz3 deploy             # Publish to PyPI
+pyz3 bench <module>     # Run benchmarks
+pyz3 stubs <module>     # Generate .pyi type stubs
+pyz3 memcheck script.py # Memory leak detection
+```
+
+## Compatibility
+
+- **Zig**: 0.15.x
+- **Python**: 3.11, 3.12, 3.13 (CPython)
+- **Platforms**: Linux (x86_64, aarch64), macOS (x86_64, arm64), Windows (x64)
+
+## Installation
+
+```bash
+pip install pyz3
+```
+
+With distribution extras:
+
+```bash
+pip install pyz3[dist]
+```
+
+## Cross-Platform Distribution
+
+```bash
+# Build for all platforms
+pyz3 build-wheel --all-platforms
+
+# Or target specific platforms
+ZIG_TARGET=x86_64-linux-gnu pyz3 build-wheel
+ZIG_TARGET=aarch64-macos pyz3 build-wheel
+```
+
+## Why pyz3?
+
+- **Fast builds** — Zig compiles faster than Rust, comparable to C
+- **Zero-cost abstractions** — No runtime overhead from the bridge
+- **Cross-compile everything** — Zig's cross-compilation makes multi-platform wheels trivial
+- **Small binaries** — Smaller than equivalent Rust/PyO3 extensions
+- **SIMD for free** — Zig's auto-vectorization and explicit SIMD support
+- **C interop included** — Import any C library with `@cImport`
 
 ## Acknowledgments
 
-This project is a hard fork of [ziggy-pydust](https://github.com/fulcrum-so/ziggy-pydust) by [Fulcrum](https://fulcrum.so).
-
-Major differences in pyz3:
-- ✅ NumPy integration via Python object interface (zero-copy PyArray planned)
-- ✅ Enhanced cross-compilation support
-- ✅ Updated CLI commands and workflows
-- ✅ NumPy examples and tests
-- ✅ Improved documentation for data science use cases
-
-Special thanks to the original ziggy-pydust contributors for creating an excellent foundation!
+Hard fork of [ziggy-pydust](https://github.com/fulcrum-so/ziggy-pydust) by [Fulcrum](https://fulcrum.so). Major additions: NumPy integration, enhanced CLI, cross-compilation, improved docs.
 
 ## License
 
 Apache License 2.0
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
 ## Links
 
-- **Original Project**: [ziggy-pydust](https://github.com/fulcrum-so/ziggy-pydust)
-- **Zig Language**: [ziglang.org](https://ziglang.org)
-- **NumPy**: [numpy.org](https://numpy.org)
+- [ziggy-pydust](https://github.com/fulcrum-so/ziggy-pydust) (original project)
+- [Zig](https://ziglang.org) | [NumPy](https://numpy.org) | [PyO3](https://pyo3.rs) (inspiration)

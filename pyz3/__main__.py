@@ -385,6 +385,31 @@ memcheck_sp.add_argument(
 )
 
 
+# Run command — build + execute a Python expression or script
+run_sp = sub.add_parser(
+    "run",
+    help="Build the extension and run a Python expression or script",
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+)
+run_sp.add_argument(
+    "target",
+    nargs="?",
+    help="Python script path or expression (with -c)",
+)
+run_sp.add_argument(
+    "-c",
+    "--command",
+    help="Python expression to evaluate after build",
+)
+run_sp.add_argument(
+    "-o",
+    "--optimize",
+    default="Debug",
+    choices=["Debug", "ReleaseSafe", "ReleaseFast", "ReleaseSmall"],
+    help="optimization level",
+)
+
+
 def main():
     args = parser.parse_args()
 
@@ -432,6 +457,9 @@ def main():
 
     elif args.command == "memcheck":
         run_memcheck(args)
+
+    elif args.command == "run":
+        run_after_build(args)
 
 
 def _parse_exts(exts: list[str], limited_api: bool = True, prefix: str = "") -> list[config.ExtModule]:
@@ -495,7 +523,7 @@ def watch_mode(args):
 def init_project(args):
     """Initialize a new pyz3 project in the current directory."""
     author_name = None
-    author_email = args.email if hasattr(args, "email") else None
+    author_email = args.email
 
     if args.author and "<" in args.author:
         parts = args.author.split("<")
@@ -505,13 +533,12 @@ def init_project(args):
     elif args.author:
         author_name = args.author
 
-    init.init_project_cookiecutter(
+    init.init_project(
         path=Path.cwd(),
         package_name=args.name,
         author_name=author_name,
         author_email=author_email,
-        description=args.description if hasattr(args, "description") else None,
-        use_interactive=not args.no_interactive if hasattr(args, "no_interactive") else True,
+        description=args.description,
     )
 
 
@@ -680,6 +707,40 @@ def run_memcheck(args):
 
     if report.is_leak_suspected(args.threshold):
         sys.exit(1)
+
+
+def run_after_build(args):
+    """Build the extension, then run a Python expression or script."""
+    import os
+    import subprocess
+
+    # Step 1: Build
+    print("Building extension...")
+    try:
+        from pyz3 import buildzig, config as pyz3_config
+
+        conf = pyz3_config.load()
+        env = os.environ.copy()
+        env["PYZ3_OPTIMIZE"] = args.optimize
+
+        buildzig.zig_build(
+            argv=["install", f"-Dpython-exe={sys.executable}", f"-Doptimize={args.optimize}"],
+            conf=conf,
+            env=env,
+        )
+    except Exception as e:
+        print(f"Build failed: {e}")
+        sys.exit(1)
+
+    # Step 2: Run
+    if args.command:
+        result = subprocess.run([sys.executable, "-c", args.command])
+        sys.exit(result.returncode)
+    elif args.target:
+        result = subprocess.run([sys.executable, args.target])
+        sys.exit(result.returncode)
+    else:
+        print("Build complete. Use -c 'expr' or provide a script path to run after build.")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,354 @@
+"""
+Built-in project scaffolding for pyz3.
+
+Generates new project files directly without external template engines.
+Provides a simple, fast project initialization similar to `maturin new`.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
+import subprocess
+from pathlib import Path
+
+from pyz3.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+# Current pyz3 version for template pinning
+PYZ3_VERSION = "0.10.2"
+
+
+def _get_git_user_info() -> tuple[str, str]:
+    """Get git user name and email if available."""
+    name = ""
+    email = ""
+    try:
+        name = subprocess.check_output(
+            ["git", "config", "user.name"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+        ).strip()
+    except Exception:
+        pass
+    try:
+        email = subprocess.check_output(
+            ["git", "config", "user.email"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+        ).strip()
+    except Exception:
+        pass
+    return name, email
+
+
+def _to_package_name(name: str) -> str:
+    """Convert project name to valid Python package name."""
+    return name.lower().replace("-", "_").replace(" ", "_")
+
+
+# ── Template strings ──────────────────────────────────────────────────────
+
+
+def _pyproject_toml(
+    name: str, package_name: str, description: str, author_name: str, author_email: str
+) -> str:
+    return f"""[project]
+name = "{name}"
+version = "0.1.0"
+description = "{description}"
+authors = [{{ name = "{author_name}", email = "{author_email}" }}]
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pyz3>={PYZ3_VERSION}", "pytest>=8.0.0"]
+
+[build-system]
+requires = ["hatchling", "pyz3>={PYZ3_VERSION}"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["{package_name}"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "{package_name}/**/*.py",
+    "src/**/*.zig",
+    "src/**/*.h",
+    "src/**/*.c",
+]
+exclude = ["test"]
+
+[tool.hatch.build.hooks.custom]
+path = "build_hook.py"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+
+# pyz3 extension module configuration
+[tool.pyz3]
+
+[[tool.pyz3.ext_module]]
+name = "{package_name}._lib"
+root = "src/{package_name}.zig"
+"""
+
+
+def _build_hook_py() -> str:
+    return """\"\"\"Build hook that compiles Zig extension modules during wheel builds.\"\"\"
+
+import sys
+
+from hatchling.builders.hooks.plugin.interface import BuildHookInterface
+
+
+class ZigBuildHook(BuildHookInterface):
+    PLUGIN_NAME = "custom"
+
+    def initialize(self, version, build_data):
+        from pyz3 import buildzig
+
+        buildzig.zig_build(
+            ["install", f"-Dpython-exe={sys.executable}", "-Doptimize=ReleaseSafe"]
+        )
+"""
+
+
+def _zig_source(package_name: str) -> str:
+    return f"""const std = @import("std");
+const py = @import("pyz3");
+
+const root = @This();
+
+/// Add two numbers together.
+pub fn add(args: struct {{ a: i64, b: i64 }}) i64 {{
+    return args.a + args.b;
+}}
+
+/// A simple greeting function.
+pub fn hello(args: struct {{ name: []const u8 = "world" }}) !py.PyString {{
+    return py.PyString.createFmt("Hello, {{s}}!", .{{args.name}});
+}}
+
+/// A counter class that tracks a value.
+pub const Counter = py.class(struct {{
+    pub const __doc__ = "A simple counter.";
+    const Self = @This();
+
+    value: i64,
+
+    pub fn __init__(self: *Self, args: struct {{ start: i64 = 0 }}) void {{
+        self.value = args.start;
+    }}
+
+    pub fn increment(self: *Self) void {{
+        self.value += 1;
+    }}
+
+    pub fn get(self: *const Self) i64 {{
+        return self.value;
+    }}
+}});
+
+comptime {{
+    py.rootmodule(root);
+}}
+
+// Zig tests — run with `zig build test` or `pytest`
+const testing = std.testing;
+
+test "add" {{
+    py.initialize();
+    defer py.finalize();
+    try testing.expectEqual(@as(i64, 5), add(.{{ .a = 2, .b = 3 }}));
+}}
+"""
+
+
+def _test_py(package_name: str) -> str:
+    return f"""from {package_name} import _lib
+
+
+def test_add():
+    assert _lib.add(2, 3) == 5
+    assert _lib.add(-1, 1) == 0
+
+
+def test_hello():
+    assert _lib.hello() == "Hello, world!"
+    assert _lib.hello("pyz3") == "Hello, pyz3!"
+
+
+def test_counter():
+    c = _lib.Counter()
+    assert c.get() == 0
+    c.increment()
+    assert c.get() == 1
+
+    c2 = _lib.Counter(start=10)
+    assert c2.get() == 10
+"""
+
+
+def _init_py() -> str:
+    return '"""Auto-generated by pyz3."""\n'
+
+
+def _readme(name: str, description: str) -> str:
+    return f"""# {name}
+
+{description}
+
+## Quick Start
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Build the Zig extension
+pyz3 develop
+
+# Run tests
+pytest
+
+# Try it out
+python -c "from {_to_package_name(name)} import _lib; print(_lib.hello())"
+```
+
+## Development
+
+```bash
+# Watch mode (auto-rebuild on changes)
+pyz3 watch
+
+# Release build
+pyz3 develop -o ReleaseFast
+```
+"""
+
+
+def _gitignore() -> str:
+    return """# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.so
+*.abi3.so
+*.pyd
+
+# Zig
+zig-out/
+zig-cache/
+.zig-cache/
+
+# pyz3 auto-generated build files
+build.zig
+pyz3.build.zig
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+"""
+
+
+def _build_zig_zon(package_name: str) -> str:
+    return f""".{{
+    .name = .@"{package_name}",
+    .version = "0.1.0",
+    .minimum_zig_version = "0.15.0",
+    .dependencies = .{{}},
+    .paths = .{{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    }},
+}}
+"""
+
+
+# ── Scaffolding logic ─────────────────────────────────────────────────────
+
+
+def scaffold_project(
+    project_dir: Path,
+    name: str | None = None,
+    description: str = "A Python extension module written in Zig",
+    author_name: str | None = None,
+    author_email: str | None = None,
+) -> Path:
+    """
+    Generate a new pyz3 project at the given directory.
+
+    Args:
+        project_dir: Directory to create the project in (will be created)
+        name: Project name (defaults to directory name)
+        description: Project description
+        author_name: Author name (defaults to git config)
+        author_email: Author email (defaults to git config)
+
+    Returns:
+        Path to the created project directory
+    """
+    if name is None:
+        name = project_dir.name
+
+    package_name = _to_package_name(name)
+
+    # Get author info from git if not provided
+    if not author_name or not author_email:
+        git_name, git_email = _get_git_user_info()
+        if not author_name:
+            author_name = git_name or "Your Name"
+        if not author_email:
+            author_email = git_email or "you@example.com"
+
+    logger.info(f"Scaffolding project '{name}' at {project_dir}")
+
+    # Create directory structure
+    project_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / "src").mkdir(exist_ok=True)
+    (project_dir / "test").mkdir(exist_ok=True)
+    (project_dir / package_name).mkdir(exist_ok=True)
+
+    # Write files
+    files = {
+        "pyproject.toml": _pyproject_toml(name, package_name, description, author_name, author_email),
+        "build_hook.py": _build_hook_py(),
+        f"src/{package_name}.zig": _zig_source(package_name),
+        f"test/__init__.py": "",
+        f"test/test_{package_name}.py": _test_py(package_name),
+        f"{package_name}/__init__.py": _init_py(),
+        "README.md": _readme(name, description),
+        ".gitignore": _gitignore(),
+        "build.zig.zon": _build_zig_zon(package_name),
+    }
+
+    for rel_path, content in files.items():
+        file_path = project_dir / rel_path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+        logger.debug(f"  Created {rel_path}")
+
+    return project_dir
