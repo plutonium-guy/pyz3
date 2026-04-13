@@ -25,7 +25,7 @@ from pyz3.logging_config import get_logger
 logger = get_logger(__name__)
 
 # Current pyz3 version for template pinning
-PYZ3_VERSION = "0.10.2"
+PYZ3_VERSION = "0.11.0"
 
 
 def _get_git_user_info() -> tuple[str, str]:
