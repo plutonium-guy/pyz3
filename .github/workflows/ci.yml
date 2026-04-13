@@ -85,7 +85,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --group docs
+        run: uv sync --extra docs
 
       - name: Build Zig docs
         run: uv run python -m ziglang build docs
